@@ -2,19 +2,26 @@
 library(shiny)
 library(readxl)
 library(dplyr)
-library(writexl)
+library(openxlsx)
 library(lubridate)
 library(tidyr)
-library(shinyWidgets)
 library(shinyjs)
 
 # Load data files
-feriados_nacionales <- read_excel("Feriados 2025.xlsx", sheet = "Feriados Nacionales")
-feriados_judios <- read_excel("Feriados 2025.xlsx", sheet = "Feriados judíos")
+feriados_nacionales <- read_excel("datos.xlsx", sheet = "Feriados nacionales")
+feriados_judios     <- read_excel("datos.xlsx", sheet = "No laborables judíos")
+feriados_armenios   <- read_excel("datos.xlsx", sheet = "No laborables armenios")
+feriados_musulmanes <- read_excel("datos.xlsx", sheet = "No laborables musulmanes")
+cronogramas <- read_excel("datos.xlsx", sheet = "Cronograma por distrito")
 
 # Ensure dates are in the correct format
+# For holiday tables: explicit format since dates are stored as strings (dd-mm-yyyy)
+# For cronogramas: across() converts all columns except "distrito" to Date
 feriados_nacionales$Fecha <- as.Date(feriados_nacionales$Fecha, format = "%d-%m-%Y")
 feriados_judios$Fecha <- as.Date(feriados_judios$Fecha, format = "%d-%m-%Y")
+feriados_armenios$Fecha    <- as.Date(feriados_armenios$Fecha,    format = "%d-%m-%Y")
+feriados_musulmanes$Fecha  <- as.Date(feriados_musulmanes$Fecha,  format = "%d-%m-%Y")
+cronogramas <- cronogramas %>% mutate(across(-distrito, as.Date))
 
 # Define weekday mapping (ordered vector for UI display)
 WEEKDAY_MAPPING <- c("Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado")
@@ -29,34 +36,26 @@ ui <- fluidPage(
       # File title input
       textInput("titulo_archivo", "Ingrese un nombre para la planilla:", 
                 placeholder = "Ej. Porteña Modelo - Matemática - 4to A"),
+      tags$hr(),
+      
+      # District selector: automatically defines the academic period and winter break dates
+      
+      selectInput("distrito", "Seleccione el distrito:",
+                  choices = cronogramas$distrito,
+                  selected = cronogramas %>% filter(distrito == "CABA")),
+      tags$p("Las fechas generadas corresponderán al calendario oficial para el nivel medio del distrito seleccionado.", style = "font-size: 90%;"),
       
       tags$hr(),
       
-      # Date range input for selecting start and end dates
-      airDatepickerInput("date_range", "Seleccione el período académico:", 
-                         range = TRUE, 
-                         value = c("2025-05-02", "2025-12-19"),
-                         separator = " a ",
-                         language = "es",
-                         dateFormat = "dd-MM-yyyy"),
+      selectInput("calendario_especial", "Agregar asuetos de calendarios especiales (colectividades):",
+                  choices = c("Ninguno", "Comunidad Judía", "Comunidad Armenia", "Comunidad Islámica"),
+                  selected = "Ninguno"),
+      tags$p("El calendario de cada institución puede ser ligeramente diferente.", style = "font-size: 90%;"),
       
-      # Agregar información del período académico y link al calendario
-      tags$p(
-        tags$span(
-          "Los valores por defecto corresponden al nivel medio de CABA. ",
-          style = "font-size: 80%;"
-        ),
-        tags$a(
-          href = "https://buenosaires.gob.ar/educacion/agenda-educativa",
-          "Ver calendario escolar completo.",
-          style = "font-size: 80%;",
-          target = "_blank"
-        )
-      ),
       tags$hr(),
       
-      # Checkboxes for class days
-      tags$h4("Seleccione los días de clase:"),
+      # Class day selector and hours per day
+      tags$label("Seleccione los días de clase:"),
       checkboxGroupInput("dias_seleccionados", 
                          label = NULL,
                          choices = WEEKDAY_MAPPING,
@@ -66,10 +65,8 @@ ui <- fluidPage(
       uiOutput("horasCatedraInputs"),
       
       tags$hr(),
-      # Checkboxes for additional options
-      checkboxInput("excluir_receso", "Excluir período de receso invernal.", value = TRUE),
-      uiOutput("recesoInvernalUI"),
-      checkboxInput("incluir_judios", "Incluir días no laborables del calendario escolar judío.", value = TRUE),
+      # Checkbox for excluding the winter break
+      checkboxInput("excluir_receso", "Ocultar fechas del período de receso invernal.", value = TRUE),
       
       tags$hr(),
       # Button to generate the list
@@ -79,7 +76,36 @@ ui <- fluidPage(
       downloadButton("downloadExcel", strong("Descargar planilla (.xlsx)"), class = "btn-success btn-block"),
       
       # Conditionally show the title reminder text based on whether title is empty
-      uiOutput("titleReminder")
+      uiOutput("titleReminder"),
+      
+      tags$hr(),
+      tags$p(
+        tags$strong(
+          "¿Tenés comentarios o sugerencias? ",
+          tags$a(
+            href = "https://tally.so/r/q4AzG8",
+            "Dejalas acá.",
+            style = "font-size: 120%;",
+            target = "_blank"
+          )
+        ),
+        style = "font-size: 110%;"
+      ),
+      div(
+        style = "display: flex; align-items: center; justify-content: space-between;",
+        tags$p(tags$strong("¿Te sirvió la app y querés apoyar su desarrollo?"), style = "font-size: 100%; margin: 0;"),
+        tags$a(
+          href = "https://cafecito.app/3runtalon",
+          rel = "noopener",
+          target = "_blank",
+          tags$img(
+            srcset = "https://cdn.cafecito.app/imgs/buttons/button_6.png 1x, https://cdn.cafecito.app/imgs/buttons/button_6_2x.png 2x, https://cdn.cafecito.app/imgs/buttons/button_6_3.75x.png 3.75x",
+            src = "https://cdn.cafecito.app/imgs/buttons/button_6.png",
+            alt = "Invitame un café en cafecito.app",
+            style = "height: 40px;"
+          )
+        )
+      )
     ),
     
     mainPanel(
@@ -89,7 +115,6 @@ ui <- fluidPage(
     )
   )
 )
-
 # Define the server
 server <- function(input, output, session) {
   # Reactive value to store results
@@ -118,36 +143,32 @@ server <- function(input, output, session) {
                     choices = 1:4,
                     selected = 1)
       }),
-      tags$p("Para generar una sola fila por día, elegir el valor 1.", style = "font-size: 80%;")
+      tags$p("Para generar una sola fila por día, elegir el valor 1.", style = "font-size: 90%;")
     )
   })
   
-  # Show or hide the winter break date range input based on the checkbox
-  output$recesoInvernalUI <- renderUI({
-    if (input$excluir_receso) {
-      tagList(
-        airDatepickerInput("receso_invernal", "Seleccione el período de receso invernal:", 
-                           range = TRUE, 
-                           value = c("2025-07-21", "2025-08-01"),
-                           separator = " a ",
-                           language = "es",
-                           dateFormat = "dd-MM-yyyy"),
-        tags$p("Los valores por defecto corresponden al nivel medio de CABA.", style = "font-size: 80%;")
+  # Show warning if data is generated but no title is provided
+  output$titleReminder <- renderUI({
+    if (!is.null(datos_resultantes()) && input$titulo_archivo == "") {
+      tags$p(
+        tags$strong("Recordá ingresar un nombre para poder descargar la planilla."), 
+        style = "color: red; font-size: 90%; margin-top: 10px;"
       )
     }
   })
   
-  # Conditional UI for title reminder - only show if title is empty
-  output$titleReminder <- renderUI({
-    if (input$titulo_archivo == "") {
-      tags$p(tags$strong("Para descargar, ingrese un nombre para la planilla."), style = "font-size: 90%;")
-    }
-  })
-  
-  # Reactive dates based on user input
-  fechas_completas <- reactive({
-    seq(as.Date(input$date_range[1]), as.Date(input$date_range[2]), by = "day")
-  })
+  # Reactives: academic cycle and winter break dates derived from the selected district
+    fechas_completas <- reactive({
+      req(input$distrito)
+      fila <- cronogramas[cronogramas$distrito == input$distrito, ]
+      seq(fila$`inicio ciclo lectivo`, fila$`fin ciclo lectivo`, by = "day")
+    })
+    
+    receso_fechas <- reactive({
+      req(input$distrito)
+      fila <- cronogramas[cronogramas$distrito == input$distrito, ]
+      c(fila$`inicio receso`, fila$`fin receso`)
+    })
   
   observeEvent(input$generate, {
     # Consolidated input validation
@@ -157,25 +178,25 @@ server <- function(input, output, session) {
     }
     
     # Generate dates and exclude the specific period
-    fechas_completas <- fechas_completas()
+    fechas_vector <- fechas_completas()
     
-    # Modification for winter break based on checkbox
+    # Exclude winter break dates if checkbox is checked
     fechas_excluidas <- if(input$excluir_receso) {
-      seq(as.Date(input$receso_invernal[1]), as.Date(input$receso_invernal[2]), by = "day")
+      seq(receso_fechas()[1], receso_fechas()[2], by = "day")
     } else {
       NULL
     }
     
-    fechas_2025 <- setdiff(fechas_completas, fechas_excluidas)
-    fechas_2025 <- as.Date(fechas_2025, origin = "1970-01-01")
+    fechas_finales <- setdiff(fechas_vector, fechas_excluidas)
+    fechas_finales <- as.Date(fechas_finales, origin = "1970-01-01")
     
     # Convert selected Spanish weekdays to lubridate numbers
     selected_weekday_numbers <- match(input$dias_seleccionados, WEEKDAY_MAPPING)
     
     # Create initial DataFrame with weekday numbers
     fechas_dias <- data.frame(
-      Fecha = fechas_2025,
-      weekday_num = wday(fechas_2025, week_start = 1),
+      Fecha = fechas_finales,
+      weekday_num = wday(fechas_finales, week_start = 1),
       stringsAsFactors = FALSE
     )
     
@@ -190,16 +211,23 @@ server <- function(input, output, session) {
       unnest(cols = c(HsCatedra)) %>%
       ungroup()
     
-    # Add holiday descriptions
+    # Select special calendar data frame based on chosen community, and add holiday descriptions
     filas_finales <- filas_finales %>%
       left_join(feriados_nacionales %>% select(Fecha, Descripcion = Descripción), by = "Fecha")
     
-    if (input$incluir_judios) {
+    feriados_especiales <- switch(input$calendario_especial,
+                                  "Comunidad Judía"    = feriados_judios,
+                                  "Comunidad Armenia"  = feriados_armenios,
+                                  "Comunidad Islámica" = feriados_musulmanes,
+                                  NULL
+    )
+    
+    if (!is.null(feriados_especiales)) {
       filas_finales <- filas_finales %>%
-        left_join(feriados_judios %>% select(Fecha, DescripcionJudia = Descripción), by = "Fecha") %>%
-        mutate(Tema = ifelse(!is.na(Descripcion), Descripcion, 
-                             ifelse(!is.na(DescripcionJudia), DescripcionJudia, ""))) %>%
-        select(-Descripcion, -DescripcionJudia)
+        left_join(feriados_especiales %>% select(Fecha, DescripcionEspecial = Descripción), by = "Fecha") %>%
+        mutate(Tema = ifelse(!is.na(Descripcion), Descripcion,
+                             ifelse(!is.na(DescripcionEspecial), DescripcionEspecial, ""))) %>%
+        select(-Descripcion, -DescripcionEspecial)
     } else {
       filas_finales <- filas_finales %>%
         mutate(Tema = ifelse(!is.na(Descripcion), Descripcion, "")) %>%
@@ -225,14 +253,14 @@ server <- function(input, output, session) {
     if (input$excluir_receso) {
       fila_receso <- data.frame(
         ClaseNumero = "-",
-        Fecha = as.Date(input$receso_invernal[1]),
+        Fecha = receso_fechas()[1],
         weekday_num = NA,
         HsCatedra = NA,
         Tema = "RECESO INVERNAL",
         stringsAsFactors = FALSE
       )
       
-      posicion_receso <- min(which(filas_finales$Fecha > as.Date(input$receso_invernal[2])))
+      posicion_receso <- min(which(filas_finales$Fecha > receso_fechas()[2]))
       
       if (length(posicion_receso) > 0) {
         filas_finales <- bind_rows(
@@ -261,15 +289,42 @@ server <- function(input, output, session) {
     
     output$resultTable <- renderTable({
       filas_finales
-    })
+    }, bordered = TRUE)
   })
   
   output$downloadExcel <- downloadHandler(
     filename = function() {
-      paste0(input$titulo_archivo, "- Planificación.xlsx")
+      paste0(input$titulo_archivo, " - Planificación diaria anual.xlsx")
     },
     content = function(file) {
-      write_xlsx(datos_resultantes(), file)
+      # Create workbook
+      wb <- createWorkbook()
+      addWorksheet(wb, "Planificación")
+      
+      # Define border style (thin borders on all sides)
+      estilo_bordes <- createStyle(
+        border = c("top", "bottom", "left", "right"),
+        borderStyle = "thin"
+      )
+      
+      # Define header style (bold + borders)
+      estilo_encabezado <- createStyle(
+        textDecoration = "bold",
+        border = c("top", "bottom", "left", "right"),
+        borderStyle = "thin"
+      )
+      
+      # Write data to worksheet
+      writeData(wb, "Planificación", datos_resultantes(), startRow = 1, startCol = 1)
+      
+      # Apply header style to first row
+      addStyle(wb, "Planificación", estilo_encabezado, rows = 1, cols = 1:ncol(datos_resultantes()), gridExpand = TRUE, stack = TRUE)
+      
+      # Apply border style to all data cells (including header)
+      addStyle(wb, "Planificación", estilo_bordes, rows = 1:(nrow(datos_resultantes()) + 1), cols = 1:ncol(datos_resultantes()), gridExpand = TRUE, stack = TRUE)
+      
+      # Save workbook
+      saveWorkbook(wb, file, overwrite = TRUE)
     }
   )
 }
