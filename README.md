@@ -92,7 +92,7 @@ La separación entre lógica de la app y datos de referencia permite actualizar 
 | [v1.0](../../releases/tag/v1.0) | MVP — CABA específico, ingreso manual de fechas, exportación con `writexl` |
 | [v2.0](../../releases/tag/v2.0) | Soporte multi-distrito, calendarios de 3 colectividades, exportación Excel estilizada |
 | [v2.1](../../releases/tag/v2.1) | Validación de datos al inicio, manejo de errores con `tryCatch`, hardening de edge cases |
-| [v2.1](../../releases/tag/v2.2) | Mejoras de interfaz y corrección del rango de fechas en los selectores de calendario |
+| [v2.2](../../releases/tag/v2.2) | Mejoras de interfaz y corrección del rango de fechas en los selectores de calendario |
 
 ---
 
