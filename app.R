@@ -7,7 +7,6 @@ library(lubridate)
 library(tidyr)
 library(shinyjs)
 
-# --- Paths and contract (P0) ---
 PATH_DATOS <- "datos.xlsx"
 
 REQUIRED_SHEETS <- c(
@@ -178,20 +177,42 @@ DISTRITO_DEFAULT <- if ("CABA" %in% DISTRITO_CHOICES) {
   DISTRITO_CHOICES[[1]]
 }
 
+default_cron_fila <- cronogramas[cronogramas$distrito == DISTRITO_DEFAULT, , drop = FALSE][1L, , drop = FALSE]
+DEFAULT_CICLO_START <- default_cron_fila$`inicio ciclo lectivo`
+DEFAULT_CICLO_END <- default_cron_fila$`fin ciclo lectivo`
+DEFAULT_RECESO_START <- default_cron_fila$`inicio receso`
+DEFAULT_RECESO_END <- default_cron_fila$`fin receso`
+
+FECHA_MIN_UI <- as.Date(format(min(c(
+  cronogramas[["inicio ciclo lectivo"]],
+  cronogramas[["fin ciclo lectivo"]],
+  cronogramas[["inicio receso"]],
+  cronogramas[["fin receso"]]
+), na.rm = TRUE), "%Y-01-01"))
+
+FECHA_MAX_UI <- as.Date(format(max(c(
+  cronogramas[["inicio ciclo lectivo"]],
+  cronogramas[["fin ciclo lectivo"]],
+  cronogramas[["inicio receso"]],
+  cronogramas[["fin receso"]]
+), na.rm = TRUE), "%Y-12-31"))
+
+MSG_SIN_FILAS <- "No se pudo generar ninguna fila con la combinación de opciones elegidas."
+
 # Define weekday mapping (ordered vector for UI display)
 WEEKDAY_MAPPING <- c("Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado")
 
 # Define the UI
 ui <- fluidPage(
   useShinyjs(),
-  titlePanel("Generar cronograma para planificación anual"),
+  titlePanel("Generar Libro de Temas"),
 
   sidebarLayout(
     sidebarPanel(
       # File title input
       textInput("titulo_archivo", "Ingrese un nombre para la planilla:",
-                placeholder = "Ej. Porteña Modelo - Matemática - 4to A"),
-      tags$hr(),
+            placeholder = "Ej. Porteña Modelo - Matemática - 4to A"),
+      tags$div(style = "border-top: 1px solid #ddd; margin: 10px 0;"),
 
       # District selector: automatically defines the academic period and winter break dates
       selectInput("distrito", "Seleccione el distrito:",
@@ -199,30 +220,99 @@ ui <- fluidPage(
                   selected = DISTRITO_DEFAULT),
       tags$p("Las fechas generadas corresponderán al calendario oficial para el nivel medio del distrito seleccionado.", style = "font-size: 90%;"),
 
-      tags$hr(),
+      fluidRow(
+        column(7, checkboxInput("personalizar_ciclo", "Personalizar fechas del ciclo", value = FALSE)),
+        column(
+          5,
+          tags$p(
+            "Seleccione para elegir fechas libremente.",
+            style = "font-size: 90%; margin-top: 10px;"
+          )
+        )
+      ),
+      conditionalPanel(
+        condition = "input.personalizar_ciclo == true",
+        dateRangeInput(
+          "rango_ciclo",
+          label = "Rango del ciclo lectivo:",
+          start = DEFAULT_CICLO_START,
+          end = DEFAULT_CICLO_END,
+          min = FECHA_MIN_UI,
+          max = FECHA_MAX_UI,
+          format = "dd/mm/yyyy",
+          language = "es",
+          separator = " a "
+        )
+      ),
+      conditionalPanel(
+        condition = "input.personalizar_ciclo == true",
+        tags$p(
+          style = "font-size: 90%; color: #555;",
+          "Las fechas personalizadas pueden no coincidir con el calendario oficial del distrito."
+        )
+      ),
+
+      tags$div(style = "border-top: 1px solid #ddd; margin: 10px 0;"),
 
       selectInput("calendario_especial", "Agregar asuetos de calendarios especiales (colectividades):",
                   choices = c("Ninguno", "Comunidad Judía", "Comunidad Armenia", "Comunidad Islámica"),
                   selected = "Ninguno"),
       tags$p("El calendario de cada institución puede ser ligeramente diferente.", style = "font-size: 90%;"),
 
-      tags$hr(),
+      tags$div(style = "border-top: 1px solid #ddd; margin: 10px 0;"),
 
       # Class day selector and hours per day
       tags$label("Seleccione los días de clase:"),
-      checkboxGroupInput("dias_seleccionados",
-                         label = NULL,
-                         choices = WEEKDAY_MAPPING,
-                         selected = NULL),
+      div(
+        style = "column-count: 2; column-gap: 1rem;",
+        checkboxGroupInput("dias_seleccionados",
+                           label = NULL,
+                           choices = WEEKDAY_MAPPING,
+                           selected = NULL)
+      ),
 
       # Inputs for class hours per day
       uiOutput("horasCatedraInputs"),
 
-      tags$hr(),
-      # Checkbox for excluding the winter break
-      checkboxInput("excluir_receso", "Ocultar fechas del período de receso invernal.", value = TRUE),
+      tags$div(style = "border-top: 1px solid #ddd; margin: 10px 0;"),
+      tags$p(tags$strong("Receso académico"), style = "font-size: 110%;"),
+      fluidRow(
+        column(7, checkboxInput("sin_receso", "Sin receso académico", value = FALSE)),
+        column(
+          5,
+          tags$p(
+            "Seleccione para omitir el receso académico oficial.",
+            style = "font-size: 90%; margin-top: 10px;"
+          )
+        )
+      ),
+      fluidRow(
+        column(7, checkboxInput("personalizar_receso", "Personalizar fechas del receso", value = FALSE)),
+        column(
+          5,
+          tags$p(
+            "Seleccione para elegir fechas libremente.",
+            style = "font-size: 90%; margin-top: 10px;"
+          )
+        )
+      ),
+      conditionalPanel(
+        condition = "input.personalizar_receso == true && input.sin_receso == false",
+        dateRangeInput(
+          "rango_receso",
+          label = "Rango del receso académico:",
+          start = DEFAULT_RECESO_START,
+          end = DEFAULT_RECESO_END,
+          min = FECHA_MIN_UI,
+          max = FECHA_MAX_UI,
+          format = "dd/mm/yyyy",
+          language = "es",
+          separator = " a "
+        )
+      ),
+      checkboxInput("excluir_receso", "Ocultar fechas del período de receso académico.", value = TRUE),
 
-      tags$hr(),
+      tags$div(style = "border-top: 1px solid #ddd; margin: 10px 0;"),
       # Button to generate the list
       actionButton("generate", strong("Generar planilla"), class = "btn-primary btn-block"),
 
@@ -232,7 +322,7 @@ ui <- fluidPage(
       # Conditionally show the title reminder text based on whether title is empty
       uiOutput("titleReminder"),
 
-      tags$hr(),
+      tags$div(style = "border-top: 1px solid #ddd; margin: 10px 0;"),
       tags$p(
         tags$strong(
           "¿Tenés comentarios o sugerencias? ",
@@ -279,6 +369,73 @@ server <- function(input, output, session) {
   # Initially disable the download button
   shinyjs::disable("downloadExcel")
 
+  observe({
+    if (isTRUE(input$sin_receso)) {
+      shinyjs::disable("personalizar_receso")
+      shinyjs::disable("rango_receso")
+      shinyjs::disable("excluir_receso")
+    } else {
+      shinyjs::enable("personalizar_receso")
+      shinyjs::enable("rango_receso")
+      shinyjs::enable("excluir_receso")
+    }
+  })
+
+  observeEvent(input$sin_receso, {
+    if (isTRUE(input$sin_receso)) {
+      updateCheckboxInput(session, "personalizar_receso", value = FALSE)
+    }
+  }, ignoreNULL = TRUE)
+
+  observeEvent(input$distrito, {
+    fila <- cronogramas[cronogramas$distrito == input$distrito, , drop = FALSE]
+    if (nrow(fila) < 1) return()
+    fila <- fila[1, , drop = FALSE]
+    if (!isTRUE(input$personalizar_ciclo)) {
+      updateDateRangeInput(
+        session, "rango_ciclo",
+        start = fila$`inicio ciclo lectivo`,
+        end = fila$`fin ciclo lectivo`
+      )
+    }
+    if (!isTRUE(input$personalizar_receso) && !isTRUE(input$sin_receso)) {
+      updateDateRangeInput(
+        session, "rango_receso",
+        start = fila$`inicio receso`,
+        end = fila$`fin receso`
+      )
+    }
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$personalizar_ciclo, {
+    if (!isTRUE(input$personalizar_ciclo)) {
+      req(input$distrito)
+      fila <- cronogramas[cronogramas$distrito == input$distrito, , drop = FALSE]
+      if (nrow(fila) < 1) return()
+      fila <- fila[1, , drop = FALSE]
+      updateDateRangeInput(
+        session, "rango_ciclo",
+        start = fila$`inicio ciclo lectivo`,
+        end = fila$`fin ciclo lectivo`
+      )
+    }
+  }, ignoreNULL = TRUE)
+
+  observeEvent(input$personalizar_receso, {
+    if (!isTRUE(input$personalizar_receso)) {
+      req(input$distrito)
+      if (isTRUE(input$sin_receso)) return()
+      fila <- cronogramas[cronogramas$distrito == input$distrito, , drop = FALSE]
+      if (nrow(fila) < 1) return()
+      fila <- fila[1, , drop = FALSE]
+      updateDateRangeInput(
+        session, "rango_receso",
+        start = fila$`inicio receso`,
+        end = fila$`fin receso`
+      )
+    }
+  }, ignoreNULL = TRUE)
+
   # Enable/disable the download button based on titulo_archivo and if data is generated
   observe({
     d <- datos_resultantes()
@@ -297,11 +454,12 @@ server <- function(input, output, session) {
       lapply(input$dias_seleccionados, function(dia) {
         selectInput(
           inputId = paste0("horas_", dia),
-          label = paste0("Cantidad de horas del día ", dia, ": (repite la fila por cada hora)"),
+          label = paste0("Cantidad de horas del día ", dia, ":"),
           choices = 1:4,
           selected = 1
         )
       }),
+      tags$p("Repite la fila por cada hora.", style = "font-size: 90%;"),
       tags$p("Para generar una sola fila por día, elegir el valor 1.", style = "font-size: 90%;")
     )
   })
@@ -316,8 +474,16 @@ server <- function(input, output, session) {
     }
   })
 
-  # Reactives: academic cycle and winter break dates derived from the selected district
+  # Reactives: academic cycle and effective recess (PLAN 2.2)
   fechas_completas <- reactive({
+    if (isTRUE(input$personalizar_ciclo)) {
+      req(input$rango_ciclo)
+      r <- input$rango_ciclo
+      if (length(r) < 2 || any(is.na(r)) || r[1] > r[2]) {
+        return(as.Date(character(0)))
+      }
+      return(seq(as.Date(r[1]), as.Date(r[2]), by = "day"))
+    }
     req(input$distrito)
     fila <- cronogramas[cronogramas$distrito == input$distrito, , drop = FALSE]
     if (nrow(fila) < 1) {
@@ -328,7 +494,18 @@ server <- function(input, output, session) {
   })
 
   receso_fechas <- reactive({
+    if (isTRUE(input$sin_receso)) {
+      return(NULL)
+    }
     req(input$distrito)
+    if (isTRUE(input$personalizar_receso)) {
+      req(input$rango_receso)
+      r <- input$rango_receso
+      if (length(r) < 2 || any(is.na(r)) || r[1] > r[2]) {
+        return(c(as.Date(NA), as.Date(NA)))
+      }
+      return(c(as.Date(r[1]), as.Date(r[2])))
+    }
     fila <- cronogramas[cronogramas$distrito == input$distrito, , drop = FALSE]
     if (nrow(fila) < 1) {
       return(c(as.Date(NA), as.Date(NA)))
@@ -340,7 +517,7 @@ server <- function(input, output, session) {
   output$resultTable <- renderTable(
     {
       validate(need(!is.null(datos_resultantes()), "Generá la planilla con el botón «Generar planilla»."))
-      validate(need(nrow(datos_resultantes()) > 0, "No hay filas para mostrar."))
+      validate(need(nrow(datos_resultantes()) > 0, MSG_SIN_FILAS))
       datos_resultantes()
     },
     bordered = TRUE
@@ -365,20 +542,74 @@ server <- function(input, output, session) {
           return()
         }
 
+        if (isTRUE(input$personalizar_ciclo)) {
+          r <- input$rango_ciclo
+          if (is.null(r) || length(r) < 2 || any(is.na(r))) {
+            showNotification("Indicá un rango válido para el ciclo lectivo.", type = "error")
+            return()
+          }
+          if (r[1] > r[2]) {
+            showNotification(
+              "La fecha de inicio del ciclo debe ser anterior o igual a la de fin.",
+              type = "error"
+            )
+            return()
+          }
+        }
+
         fechas_vector <- fechas_completas()
         if (length(fechas_vector) == 0) {
-          showNotification("No hay fechas de ciclo lectivo para el distrito seleccionado.", type = "error")
+          showNotification(
+            "No hay un rango de ciclo lectivo válido. Revisá el distrito o las fechas personalizadas.",
+            type = "error"
+          )
           return()
         }
 
-        rango_receso <- receso_fechas()
-        if (any(is.na(rango_receso)) || length(rango_receso) < 2) {
-          showNotification("Faltan fechas de receso para el distrito seleccionado en datos.xlsx.", type = "error")
-          return()
+        sin_rec <- isTRUE(input$sin_receso)
+
+        if (!sin_rec && isTRUE(input$personalizar_receso)) {
+          rr <- input$rango_receso
+          if (is.null(rr) || length(rr) < 2 || any(is.na(rr))) {
+            showNotification("Indicá un rango válido para el receso académico.", type = "error")
+            return()
+          }
+          if (rr[1] > rr[2]) {
+            showNotification(
+              "La fecha de inicio del receso debe ser anterior o igual a la de fin.",
+              type = "error"
+            )
+            return()
+          }
         }
 
-        # Exclude winter break dates if checkbox is checked
-        fechas_excluidas <- if (isTRUE(input$excluir_receso)) {
+        rango_receso <- if (sin_rec) NULL else receso_fechas()
+
+        if (!sin_rec) {
+          if (is.null(rango_receso) || length(rango_receso) < 2 || any(is.na(rango_receso))) {
+            showNotification(
+              "Faltan fechas de receso académico para el distrito seleccionado en datos.xlsx.",
+              type = "error"
+            )
+            return()
+          }
+
+          ciclo_start <- min(fechas_vector)
+          ciclo_end <- max(fechas_vector)
+          rec_start <- rango_receso[1]
+          rec_end <- rango_receso[2]
+          if (max(rec_start, ciclo_start) > min(rec_end, ciclo_end)) {
+            showNotification(
+              "El período de receso elegido está fuera del ciclo lectivo elegido.",
+              type = "error"
+            )
+            return()
+          }
+        }
+
+        excluir_efectivo <- isTRUE(input$excluir_receso) && !sin_rec
+
+        fechas_excluidas <- if (excluir_efectivo && !is.null(rango_receso)) {
           seq(rango_receso[1], rango_receso[2], by = "day")
         } else {
           NULL
@@ -403,7 +634,7 @@ server <- function(input, output, session) {
           filter(weekday_num %in% selected_weekday_numbers)
 
         if (nrow(fechas_dias) == 0) {
-          showNotification("No hay fechas que coincidan con los días seleccionados.", type = "warning")
+          showNotification(MSG_SIN_FILAS, type = "warning")
           empty_df <- setNames(
             data.frame(character(0), character(0), character(0), character(0)),
             c("Clase Nº", "Fecha", "Día de la Semana", "Tema")
@@ -444,13 +675,13 @@ server <- function(input, output, session) {
         filas_finales <- filas_finales %>%
           mutate(ClaseNumero = ifelse(Tema != "", "-", as.character(ClaseNumero)))
 
-        if (isTRUE(input$excluir_receso)) {
+        if (excluir_efectivo) {
           fila_receso <- data.frame(
             ClaseNumero = "-",
             Fecha = rango_receso[1],
             weekday_num = NA_real_,
             HsCatedra = NA_real_,
-            Tema = "RECESO INVERNAL",
+            Tema = "RECESO ACADÉMICO",
             stringsAsFactors = FALSE
           )
 
