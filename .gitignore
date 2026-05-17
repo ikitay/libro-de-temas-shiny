@@ -4,4 +4,6 @@
 .Rproj.user/
 *.Rproj
 datos.xlsx
-/rsconnect
+rsconnect/
+
+
