@@ -2,11 +2,13 @@
 
 > Aplicación web desarrollada en R/Shiny que automatiza la generación de planillas de planificación anual para docentes de nivel medio en Argentina — construida desde la experiencia directa en el aula.
 
+> **Repositorio archivado.** Esta app fue reemplazada por [teacher-admin-tools](https://github.com/ikitay/teacher-admin-tools-shiny), que reúne el generador de libros de temas y el de planillas de asistencia y seguimiento.
+
 <!-- BADGES -->
 ![R](https://img.shields.io/badge/R-4.x-276DC3?logo=r&logoColor=white)
 ![Shiny](https://img.shields.io/badge/Shiny-deployed-blue?logo=rstudio&logoColor=white)
-![Status](https://img.shields.io/badge/status-active-brightgreen)
-![License](https://img.shields.io/badge/license-MIT-lightgrey)
+![Status](https://img.shields.io/badge/status-archived-lightgrey)
+![License](https://img.shields.io/badge/license-GPL--3.0-blue)
 
 **[▶ Demo en vivo →](https://ikitay.shinyapps.io/libro-de-temas-shiny/)**
 
@@ -116,6 +118,10 @@ Hoy estoy construyendo sobre esta base para hacer la transición al análisis de
 ---
 
 ---
+
+## Licencia
+
+GPL-3.0. Ver [`LICENSE`](LICENSE).
 
 ## 🇬🇧 Project summary (English)
 
